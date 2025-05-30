@@ -1,6 +1,6 @@
 # COP4813 Semester Project 
 
-Albert
+Anika
 
 - [COP4813 Semester Project](#cop4813-semester-project)
   - [\[Topic\]](#topic)
