@@ -9,6 +9,7 @@
     - [Backend](#backend)
       - [Setup](#setup-1)
       - [Run](#run)
+    - [About](#about)
 
 
 ### Frontend
@@ -36,3 +37,14 @@ pip install -r requirements.txt
 ```sh
 python3 main.py
 ```
+
+### About
+**Friend Finder (Clifton Strengths Assessment)**
+1. Description: Connects users with similar personalities based on quiz responses.
+2. Challenge: Designing a simple matching algorithm with accessible scoring.
+3. Solution: Backend python server calculates scores and matches based on thresholds.
+4. Tiers:
+- Presentation: Personality quiz, matches list
+- Application: Matching logic in python
+- Data: Users, responses, matches
+5. Data Source: Quiz results stored in DB
