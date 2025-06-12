@@ -14,3 +14,7 @@ For - keyed items, the response
 "Moderately Accurate" a 2,
 "Very Accurate" a value of 1.
  
+---
+
+https://github.com/Alheimsins/bigfive-web
+https://ipip.ori.org/new_ipip-50-item-scale.htm

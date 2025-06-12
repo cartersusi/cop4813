@@ -2,9 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
-from typing import Optional
 
 # Create FastAPI instance
 app = FastAPI(title="FastAPI React Server", version="1.0.0")
@@ -18,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-static_dir = "frontend/dist"
+static_dir = "../frontend/dist"
 
 # API Routes
 @app.get("/")
@@ -84,4 +82,4 @@ if __name__ == "__main__":
     print("🌐 React app available at: http://localhost:8000/")
     
     # Use import string for reload functionality
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

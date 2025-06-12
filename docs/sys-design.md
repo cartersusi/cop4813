@@ -8,7 +8,8 @@
 
 ## ER Diagram & Descriptions
 
-### ---
+### ER Diagram
+![DB ER](./support/db-er.png)
 
 ### ---
 
