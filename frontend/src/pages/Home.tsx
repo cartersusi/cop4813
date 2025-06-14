@@ -10,7 +10,7 @@ export default function Component() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Users className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-900">StrengthConnect</h1>
+            <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
           </div>
           <Button variant="outline">About</Button>
         </div>
