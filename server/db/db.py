@@ -1,4 +1,5 @@
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import hashlib
 import secrets
 import uuid
@@ -8,28 +9,49 @@ import json
 
 
 class DatabaseManager:
-    """Main database manager class for user management system with authentication."""
+    """Main database manager class for user management system with authentication using PostgreSQL."""
     
-    def __init__(self, db_path: str = "user_management.db"):
+    def __init__(self, host: str = "localhost", port: int = 5432, 
+                 database: str = "friend_finder", user: str = None, 
+                 password: str = None):
         """Initialize the database manager.
         
         Args:
-            db_path (str): Path to the SQLite database file
+            host (str): PostgreSQL host
+            port (int): PostgreSQL port
+            database (str): Database name
+            user (str): Database user
+            password (str): Database password
         """
-        self.db_path = db_path
+        self.host = host
+        self.port = port
+        self.database = database
+        self.user = user
+        self.password = password
         self.connection = None
         self.connect()
         self.create_tables()
         self.create_default_roles_and_permissions()
     
     def connect(self) -> None:
-        """Establish connection to the SQLite database."""
+        """Establish connection to the PostgreSQL database."""
         try:
-            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
-            self.connection.row_factory = sqlite3.Row  # Enable dict-like access to rows
-            self.connection.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
-            print(f"Connected to database: {self.db_path}")
-        except sqlite3.Error as e:
+            connection_params = {
+                'host': self.host,
+                'port': self.port,
+                'database': self.database,
+                'cursor_factory': RealDictCursor
+            }
+            
+            if self.user:
+                connection_params['user'] = self.user
+            if self.password:
+                connection_params['password'] = self.password
+                
+            self.connection = psycopg2.connect(**connection_params)
+            self.connection.autocommit = False  # We'll handle transactions manually
+            print(f"Connected to PostgreSQL database: {self.database}")
+        except psycopg2.Error as e:
             print(f"Error connecting to database: {e}")
             raise
     
@@ -39,7 +61,7 @@ class DatabaseManager:
             self.connection.close()
             print("Database connection closed")
     
-    def execute_query(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+    def execute_query(self, query: str, params: tuple = ()) -> psycopg2.extensions.cursor:
         """Execute a SQL query with parameters.
         
         Args:
@@ -47,14 +69,14 @@ class DatabaseManager:
             params (tuple): Parameters for the query
             
         Returns:
-            sqlite3.Cursor: Cursor object with query results
+            psycopg2.extensions.cursor: Cursor object with query results
         """
         try:
             cursor = self.connection.cursor()
             cursor.execute(query, params)
             self.connection.commit()
             return cursor
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             print(f"Error executing query: {e}")
             self.connection.rollback()
             raise
@@ -65,18 +87,18 @@ class DatabaseManager:
         # Users table
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
-                email_verified BOOLEAN DEFAULT 0,
+                email_verified BOOLEAN DEFAULT FALSE,
                 password_hash VARCHAR(255) NOT NULL,
                 salt VARCHAR(255),
                 first_name VARCHAR(100),
                 last_name VARCHAR(100),
                 avatar_url VARCHAR(500),
                 bio TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                is_deleted BOOLEAN DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                is_deleted BOOLEAN DEFAULT FALSE,
                 current_results INTEGER,
                 last_login_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -95,8 +117,8 @@ class DatabaseManager:
                 id VARCHAR(255) PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 device_info VARCHAR(500),
-                ip_address VARCHAR(45),
-                is_active BOOLEAN DEFAULT 1,
+                ip_address INET,
+                is_active BOOLEAN DEFAULT TRUE,
                 expires_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -110,7 +132,7 @@ class DatabaseManager:
         # Password reset tokens
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 token VARCHAR(255) UNIQUE NOT NULL,
                 expires_at TIMESTAMP NOT NULL,
@@ -126,7 +148,7 @@ class DatabaseManager:
         # Email verification tokens
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS email_verification_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 token VARCHAR(255) UNIQUE NOT NULL,
                 email VARCHAR(255) NOT NULL,
@@ -143,10 +165,10 @@ class DatabaseManager:
         # Roles table
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS roles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name VARCHAR(100) UNIQUE NOT NULL,
                 description TEXT,
-                is_active BOOLEAN DEFAULT 1,
+                is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -154,7 +176,7 @@ class DatabaseManager:
         # Permissions table
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS permissions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name VARCHAR(100) UNIQUE NOT NULL,
                 description TEXT,
                 resource VARCHAR(100),
@@ -193,14 +215,14 @@ class DatabaseManager:
         # Security audit log
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS user_security_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER,
                 event_type VARCHAR(100) NOT NULL,
-                ip_address VARCHAR(45),
+                ip_address INET,
                 user_agent VARCHAR(500),
-                success BOOLEAN DEFAULT 1,
+                success BOOLEAN DEFAULT TRUE,
                 failure_reason VARCHAR(255),
-                metadata TEXT,
+                metadata JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
             )
@@ -208,6 +230,7 @@ class DatabaseManager:
         
         self.execute_query("CREATE INDEX IF NOT EXISTS idx_security_logs_user_date ON user_security_logs(user_id, created_at)")
         self.execute_query("CREATE INDEX IF NOT EXISTS idx_security_logs_event_date ON user_security_logs(event_type, created_at)")
+        self.execute_query("CREATE INDEX IF NOT EXISTS idx_security_logs_metadata ON user_security_logs USING GIN(metadata)")
         
         # Friends table
         self.execute_query("""
@@ -230,7 +253,7 @@ class DatabaseManager:
         # Results table
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 extraversion REAL,
                 agreeableness REAL,
@@ -238,7 +261,7 @@ class DatabaseManager:
                 emotional_stability REAL,
                 intellect_imagination REAL,
                 test_version VARCHAR(50),
-                is_current BOOLEAN DEFAULT 0,
+                is_current BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -250,7 +273,7 @@ class DatabaseManager:
         # Posts table
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS posts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 body TEXT,
                 user_id INTEGER NOT NULL,
@@ -265,19 +288,15 @@ class DatabaseManager:
         self.execute_query("CREATE INDEX IF NOT EXISTS idx_posts_user_status ON posts(user_id, status)")
         self.execute_query("CREATE INDEX IF NOT EXISTS idx_posts_status_visibility_date ON posts(status, visibility, created_at)")
         
-        # Add foreign key constraint for current_results
-        self.execute_query("""
-            CREATE TRIGGER IF NOT EXISTS fk_users_current_results
-            BEFORE UPDATE OF current_results ON users
-            FOR EACH ROW
-            WHEN NEW.current_results IS NOT NULL
-            BEGIN
-                SELECT CASE
-                    WHEN (SELECT id FROM results WHERE id = NEW.current_results) IS NULL
-                    THEN RAISE(ABORT, 'Foreign key constraint failed: current_results')
-                END;
-            END
-        """)
+        try:
+            self.execute_query("""
+                ALTER TABLE users 
+                ADD CONSTRAINT fk_users_current_results 
+                FOREIGN KEY (current_results) REFERENCES results(id)
+            """)
+        except psycopg2.errors.DuplicateObject:
+            # Constraint already exists, ignore the error
+            pass
         
         print("All tables created successfully")
     
@@ -294,10 +313,10 @@ class DatabaseManager:
         for role_name, description in default_roles:
             try:
                 self.execute_query(
-                    "INSERT OR IGNORE INTO roles (name, description) VALUES (?, ?)",
+                    "INSERT INTO roles (name, description) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
                     (role_name, description)
                 )
-            except sqlite3.Error:
+            except psycopg2.Error:
                 pass  # Role already exists
         
         # Default permissions
@@ -315,10 +334,10 @@ class DatabaseManager:
         for perm_name, description, resource, action in default_permissions:
             try:
                 self.execute_query(
-                    "INSERT OR IGNORE INTO permissions (name, description, resource, action) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO permissions (name, description, resource, action) VALUES (%s, %s, %s, %s) ON CONFLICT (name) DO NOTHING",
                     (perm_name, description, resource, action)
                 )
-            except sqlite3.Error:
+            except psycopg2.Error:
                 pass  # Permission already exists
         
         print("Default roles and permissions created")
@@ -377,10 +396,11 @@ class DatabaseManager:
             
             cursor = self.execute_query("""
                 INSERT INTO users (username, email, password_hash, salt, first_name, last_name)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (username, email, password_hash, salt, first_name, last_name))
             
-            user_id = cursor.lastrowid
+            user_id = cursor.fetchone()['id']
             
             # Assign default user role
             self.assign_role_to_user(user_id, 'user', user_id)
@@ -391,7 +411,7 @@ class DatabaseManager:
             print(f"User created successfully with ID: {user_id}")
             return user_id
             
-        except sqlite3.IntegrityError as e:
+        except psycopg2.IntegrityError as e:
             print(f"Error creating user: {e}")
             return None
     
@@ -408,7 +428,7 @@ class DatabaseManager:
         """
         try:
             # Get role ID
-            cursor = self.execute_query("SELECT id FROM roles WHERE name = ?", (role_name,))
+            cursor = self.execute_query("SELECT id FROM roles WHERE name = %s", (role_name,))
             role_row = cursor.fetchone()
             
             if not role_row:
@@ -418,13 +438,16 @@ class DatabaseManager:
             role_id = role_row['id']
             
             self.execute_query("""
-                INSERT OR REPLACE INTO user_roles (user_id, role_id, assigned_by)
-                VALUES (?, ?, ?)
+                INSERT INTO user_roles (user_id, role_id, assigned_by)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, role_id) DO UPDATE SET
+                assigned_by = EXCLUDED.assigned_by,
+                assigned_at = CURRENT_TIMESTAMP
             """, (user_id, role_id, assigned_by))
             
             return True
             
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             print(f"Error assigning role: {e}")
             return False
     
@@ -446,12 +469,12 @@ class DatabaseManager:
         
         self.execute_query("""
             INSERT INTO user_sessions (id, user_id, device_info, ip_address, expires_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (session_id, user_id, device_info, ip_address, expires_at))
         
         # Update last login
         self.execute_query(
-            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = %s",
             (user_id,)
         )
         
@@ -475,25 +498,24 @@ class DatabaseManager:
             failure_reason (str): Reason for failure if applicable
             metadata (dict): Additional event data
         """
-        metadata_json = json.dumps(metadata) if metadata else None
-        
         self.execute_query("""
             INSERT INTO user_security_logs 
             (user_id, event_type, ip_address, user_agent, success, failure_reason, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, event_type, ip_address, user_agent, success, failure_reason, metadata_json))
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, event_type, ip_address, user_agent, success, failure_reason, 
+              json.dumps(metadata) if metadata else None))
     
-    def get_user_by_email(self, email: str) -> Optional[sqlite3.Row]:
+    def get_user_by_email(self, email: str) -> Optional[psycopg2.extras.RealDictRow]:
         """Get user by email address.
         
         Args:
             email (str): Email address
             
         Returns:
-            Optional[sqlite3.Row]: User row if found
+            Optional[RealDictRow]: User row if found
         """
         cursor = self.execute_query(
-            "SELECT * FROM users WHERE email = ? AND is_active = 1 AND is_deleted = 0",
+            "SELECT * FROM users WHERE email = %s AND is_active = TRUE AND is_deleted = FALSE",
             (email,)
         )
         return cursor.fetchone()
@@ -552,20 +574,33 @@ class DatabaseManager:
 
 if __name__ == "__main__":
     """Main function to demonstrate the database system."""
-
-    # parse arg positional arguments
+    
     import argparse
     parser = argparse.ArgumentParser(description="Initialize the Friend Finder Database System")
-    parser.add_argument('--db', type=str, default='freind-finder.db',
-                        help='Path to the SQLite database file')
+    parser.add_argument('--host', type=str, default='localhost',
+                        help='PostgreSQL host (default: localhost)')
+    parser.add_argument('--port', type=int, default=5432,
+                        help='PostgreSQL port (default: 5432)')
+    parser.add_argument('--database', type=str, default='friend_finder',
+                        help='Database name (default: friend_finder)')
+    parser.add_argument('--user', type=str, default=None,
+                        help='Database user (default: current user)')
+    parser.add_argument('--password', type=str, default=None,
+                        help='Database password (default: none)')
     
     args = parser.parse_args()
     
     # Initialize database
-    db = DatabaseManager(args.db)
+    db = DatabaseManager(
+        host=args.host,
+        port=args.port,
+        database=args.database,
+        user=args.user,
+        password=args.password
+    )
     
     try:
-        print("\n=== Database System Initialized ===")
+        print("\n=== PostgreSQL Database System Initialized ===")
         
         # Create some sample users
         print("\n=== Creating Sample Users ===")
