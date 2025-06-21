@@ -8,6 +8,9 @@ import { Label } from "../components/ui/label"
 import { Users, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react"
 import { QUIZ_QUESTIONS } from "../data/quiz-questions"
 import { useQuiz } from "../hooks/use-quiz"
+import ResultsPage from "./Results"
+import { calculatePersonalityScores } from "../lib/calculate-scores"
+
 
 export default function QuizPage() {
   const {
@@ -44,59 +47,17 @@ export default function QuizPage() {
   const canProceed = currentAnswer !== undefined
 
   if (quizState.isComplete) {
+    const personalityScores = calculatePersonalityScores(quizState.answers, QUIZ_QUESTIONS)
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header */}
-        <header className="container mx-auto px-4 py-6">
-          <div className="flex items-center space-x-2">
-            <Users className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
-          </div>
-        </header>
-
-        {/* Completion Screen */}
-        <main className="container mx-auto px-4 py-12">
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="mb-8">
-              <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Assessment Complete!</h2>
-              <p className="text-lg text-gray-600 mb-8">
-                Thank you for completing the Clifton Strengths Assessment. We're now analyzing your responses to find
-                your perfect matches.
-              </p>
-            </div>
-
-            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur mb-8">
-              <CardContent className="p-8">
-                <h3 className="text-xl font-semibold mb-4">Your Responses Summary</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="text-left">
-                    <span className="font-medium">Questions Answered:</span>
-                    <span className="ml-2">
-                      {quizState.answers.length} / {QUIZ_QUESTIONS.length}
-                    </span>
-                  </div>
-                  <div className="text-left">
-                    <span className="font-medium">Completion:</span>
-                    <span className="ml-2">100%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              <Button size="lg" className="text-lg px-8 py-4">
-                View My Results
-              </Button>
-              <div>
-                <Button variant="outline" onClick={resetQuiz}>
-                  Retake Assessment
-                </Button>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
+      <ResultsPage
+        scores={personalityScores}
+        onSignUp={() => {
+          // TODO: Navigate to sign up page
+          console.log("Navigate to sign up")
+        }}
+        onRetakeQuiz={resetQuiz}
+      />
     )
   }
 
@@ -137,7 +98,9 @@ export default function QuizPage() {
             <CardHeader className="pb-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-medium text-indigo-600 uppercase tracking-wide">
-                  {currentQuestion.domain.charAt(0).toUpperCase() + currentQuestion.domain.slice(1)} Domain
+                  {currentQuestion.factor.replace("_", " ").charAt(0).toUpperCase() +
+                    currentQuestion.factor.replace("_", " ").slice(1)}{" "}
+                  Factor
                 </div>
                 <div className="text-sm text-gray-500">#{currentQuestion.id}</div>
               </div>

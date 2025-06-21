@@ -1,10 +1,11 @@
-import type { QuizQuestion } from "../types/quiz";
+import type { QuizQuestion } from "../types/quiz"
 
 export const QUIZ_QUESTIONS: QuizQuestion[] = [
   {
     id: 1,
-    text: "I read each e-mail before responding to any.",
-    domain: "executing",
+    text: "I am the life of the party",
+    factor: "extraversion",
+    correlation: "+",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -15,8 +16,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 2,
-    text: "I am the one others count on when something needs to be done.",
-    domain: "executing",
+    text: "I feel little concern for others",
+    factor: "agreeableness",
+    correlation: "-",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -27,8 +29,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 3,
-    text: "I enjoy motivating others to achieve their goals.",
-    domain: "influencing",
+    text: "I am always prepared",
+    factor: "conscientiousness",
+    correlation: "+",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -39,8 +42,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 4,
-    text: "I am naturally drawn to leadership roles.",
-    domain: "influencing",
+    text: "I get stressed out easily",
+    factor: "emotional_stability",
+    correlation: "-",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -51,8 +55,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 5,
-    text: "I find it easy to connect with people from different backgrounds.",
-    domain: "relationship",
+    text: "I have a rich vocabulary",
+    factor: "intellect_imagination",
+    correlation: "+",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -63,8 +68,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 6,
-    text: "I genuinely care about the well-being of others.",
-    domain: "relationship",
+    text: "I don't talk a lot",
+    factor: "extraversion",
+    correlation: "-",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -75,8 +81,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 7,
-    text: "I enjoy analyzing complex problems and finding solutions.",
-    domain: "strategic",
+    text: "I am interested in people",
+    factor: "agreeableness",
+    correlation: "+",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -87,8 +94,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 8,
-    text: "I often think about future possibilities and trends.",
-    domain: "strategic",
+    text: "I leave my belongings around",
+    factor: "conscientiousness",
+    correlation: "-",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -99,8 +107,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 9,
-    text: "I prefer to have a detailed plan before starting any project.",
-    domain: "executing",
+    text: "I am relaxed most of the time",
+    factor: "emotional_stability",
+    correlation: "+",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
@@ -111,8 +120,9 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: 10,
-    text: "I am comfortable speaking in front of large groups.",
-    domain: "influencing",
+    text: "I have difficulty understanding abstract ideas",
+    factor: "intellect_imagination",
+    correlation: "-",
     options: [
       { id: "a", text: "Strongly Disagree", value: 1 },
       { id: "b", text: "Disagree", value: 2 },
