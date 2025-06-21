@@ -6,7 +6,7 @@ import Home from './pages/Home.tsx'
 //import About from './pages/About.tsx'
 //import Contact from './pages/Contact.tsx'
 import Quiz from './pages/Quiz.tsx'
-import Results from './pages/Results.tsx'
+
 //import User from './pages/User.tsx'
 //import Match from './pages/Match.tsx'
 
@@ -16,7 +16,6 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/quiz" element={<Quiz />} />
-        <Route path="/results" element={<Results />} />
         {/* Uncomment these when you create the components:
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />

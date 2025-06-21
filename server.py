@@ -16,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-static_dir = "../frontend/dist"
+static_dir = "./frontend/dist"
 
 # API Routes
 @app.get("/")
@@ -81,5 +81,4 @@ if __name__ == "__main__":
     print("📱 API available at: http://localhost:8000/api/")
     print("🌐 React app available at: http://localhost:8000/")
     
-    # Use import string for reload functionality
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
