@@ -3,3 +3,5 @@ fastapi
 pandas
 numpy
 psycopg2
+email-validator
+python-multipart

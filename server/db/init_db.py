@@ -28,6 +28,15 @@ if __name__ == "__main__":
         user=args.user,
         password=args.password
     )
+
+    try:
+        print("\n=== Initializing PostgreSQL Database Tables ===")
+        db.create_tables()
+        db.create_default_roles_and_permissions()
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        exit(1)
+    
     
     try:
         print("\n=== PostgreSQL Database System Initialized ===")

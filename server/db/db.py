@@ -30,8 +30,8 @@ class DatabaseManager:
         self.password = password
         self.connection = None
         self.connect()
-        self.create_tables()
-        self.create_default_roles_and_permissions()
+        #self.create_tables()
+        #self.create_default_roles_and_permissions()
     
     def connect(self) -> None:
         """Establish connection to the PostgreSQL database."""
@@ -482,6 +482,33 @@ class DatabaseManager:
         self.log_security_event(user_id, 'login', ip_address=ip_address, success=True)
         
         return session_id
+
+    def verify_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Verify a user session.
+        
+        Args:
+            session_id (str): Session token
+            
+        Returns:
+            Optional[Dict]: Session data if valid, None otherwise
+        """
+        cursor = self.execute_query("""
+            SELECT * FROM user_sessions 
+            WHERE id = %s AND is_active = TRUE AND expires_at > CURRENT_TIMESTAMP
+        """, (session_id,))
+        
+        session = cursor.fetchone()
+        
+        if session:
+            # Update last accessed time
+            self.execute_query("""
+                UPDATE user_sessions 
+                SET last_accessed_at = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (session_id,))
+            return dict(session)
+        
+        return None
     
     def log_security_event(self, user_id: int, event_type: str, 
                           ip_address: str = None, user_agent: str = None,

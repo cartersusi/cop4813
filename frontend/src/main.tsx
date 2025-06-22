@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import Home from './pages/Home.tsx'
+import Auth from './pages/Auth.tsx'
 //import About from './pages/About.tsx'
 //import Contact from './pages/Contact.tsx'
 import Quiz from './pages/Quiz.tsx'
@@ -16,6 +17,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/quiz" element={<Quiz />} />
+        <Route path="/auth" element={<Auth />} />
         {/* Uncomment these when you create the components:
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />

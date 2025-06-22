@@ -4,6 +4,8 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
+from server.auth.auth import auth_router
+
 # Create FastAPI instance
 app = FastAPI(title="FastAPI React Server", version="1.0.0")
 
@@ -19,6 +21,10 @@ app.add_middleware(
 static_dir = "./frontend/dist"
 
 # API Routes
+
+# Auth routes
+app.include_router(auth_router)
+
 @app.get("/")
 async def root():
     index_path = os.path.join(static_dir, "index.html")
