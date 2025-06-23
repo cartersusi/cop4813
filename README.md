@@ -3,6 +3,12 @@
 
 - [COP4813 Semester Project](#cop4813-semester-project)
 - [Friend Finder](#friend-finder)
+  - [Prod Build](#prod-build)
+    - [Requirements](#requirements)
+    - [Frontend Build](#frontend-build)
+    - [Image (MacOS / ARM)](#image-macos--arm)
+    - [Image (Linux / x86)](#image-linux--x86)
+    - [Run](#run)
   - [Local Dev](#local-dev)
     - [Setup (mac)](#setup-mac)
     - [Frontend](#frontend)
@@ -10,13 +16,36 @@
       - [Build](#build)
     - [Backend](#backend)
       - [Setup](#setup-1)
-      - [Run](#run)
-  - [Prod](#prod)
-    - [Requirements](#requirements)
-    - [Image (MacOS / ARM)](#image-macos--arm)
-    - [Image (Linux / x86)](#image-linux--x86)
-    - [Run](#run-1)
+      - [Run](#run-1)
   - [About](#about)
+
+## Prod Build
+
+### Requirements
+- Docker
+- Nodejs / Npm
+
+### Frontend Build
+```sh
+cd frontend
+npm install
+npm run build
+```
+
+### Image (MacOS / ARM)
+```sh
+docker build --platform linux/arm64 -t friend-finder-service . # ARM 
+```
+
+### Image (Linux / x86)
+```sh
+docker build --platform linux/amd64 -t friend-finder-service . # x86 
+```
+
+### Run
+```sh
+docker run -p 8000:8000 -p 9090:9090 -p 5432:5432 friend-finder-service
+```
 
 ## Local Dev
 
@@ -50,27 +79,7 @@ pip install -r requirements.txt
 
 #### Run
 ```sh
-python3 main.py
-```
-
-## Prod
-
-### Requirements
-- Docker
-  
-### Image (MacOS / ARM)
-```sh
-docker build --platform linux/arm64 -t friend-finder-service . # ARM 
-```
-
-### Image (Linux / x86)
-```sh
-docker build --platform linux/amd64 -t friend-finder-service . # x86 
-```
-
-### Run
-```sh
-docker run -p 8000:8000 -p 9090:9090 -p 5432:5432 friend-finder-service
+python3 server.py
 ```
 
 ## About
