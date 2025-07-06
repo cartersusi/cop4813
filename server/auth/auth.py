@@ -89,6 +89,8 @@ def validate_username(username: str) -> bool:
         return False
     return True
 
+
+# Also fix the login function:
 @auth_router.post("/login", response_model=AuthResponse)
 async def login(
     request: LoginRequest, 
@@ -97,7 +99,7 @@ async def login(
 ):
     """Authenticate user and create session."""
     try:
-        # Get client info
+         # Get client info
         ip_address = get_client_ip(http_request)
         user_agent = get_user_agent(http_request)
         
@@ -168,7 +170,7 @@ async def login(
         
         # Format session data for response
         session_response = SessionResponse(
-            id=session_data["id"],
+            id=str(session_data["id"]),  # Ensure this is a string
             user_id=str(session_data["user_id"]),
             expires_at=session_data["expires_at"].isoformat(),
             last_accessed_at=session_data["last_accessed_at"].isoformat(),
@@ -373,9 +375,9 @@ async def verify_session(
             created_at=data["created_at"].isoformat()
         )
         
-        # Format session data for response
+        # Format session data for response - FIX: Ensure all values are strings
         session_response = SessionResponse(
-            id=data["id"],  # This is the session id
+            id=str(data["id"]),  # Convert session ID to string
             user_id=str(data["user_id"]),
             expires_at=data["expires_at"].isoformat(),
             last_accessed_at=data["last_accessed_at"].isoformat(),

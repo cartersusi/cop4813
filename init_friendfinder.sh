@@ -110,9 +110,15 @@ create_db() {
 
 init_db() {
     info "Initializing database schema..."
-    python3 -m venv venv
+    
+    if [[ -d "venv" ]]; then
+        info "Virtual environment already exists. Skipping creation."
+    else
+        python3 -m venv venv
+        source venv/bin/activate
+    fi
+
     pip install -r requirements.txt
-    source venv/bin/activate
     python3 server/db/init_db.py
 }
 

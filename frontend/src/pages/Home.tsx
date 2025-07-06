@@ -12,7 +12,9 @@ export default function Component() {
             <Users className="h-8 w-8 text-indigo-600" />
             <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
           </div>
-          <Button variant="outline">About</Button>
+          <Button onClick={() => window.location.href = "auth"} className="text-sm px-4 py-2 bg-indigo-600 text-white rounded-lg">
+            Login
+          </Button>
         </div>
       </header>
 

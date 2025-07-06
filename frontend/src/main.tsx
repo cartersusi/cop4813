@@ -7,6 +7,7 @@ import Auth from './pages/Auth.tsx'
 //import About from './pages/About.tsx'
 //import Contact from './pages/Contact.tsx'
 import Quiz from './pages/Quiz.tsx'
+import Admin from './pages/Admin.tsx'
 
 //import User from './pages/User.tsx'
 //import Match from './pages/Match.tsx'
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/" element={<Home />} />
         <Route path="/quiz" element={<Quiz />} />
         <Route path="/auth" element={<Auth />} />
+        <Route path="/admin" element={<Admin />} />
         {/* Uncomment these when you create the components:
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
