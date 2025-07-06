@@ -5,6 +5,7 @@
 - [Friend Finder](#friend-finder)
   - [Prod Build](#prod-build)
     - [Requirements](#requirements)
+    - [Script (Recommended)](#script-recommended)
     - [Frontend Build](#frontend-build)
     - [Image (MacOS / ARM)](#image-macos--arm)
     - [Image (Linux / x86)](#image-linux--x86)
@@ -24,6 +25,11 @@
 ### Requirements
 - Docker
 - Nodejs / Npm
+
+### Script (Recommended)
+```sh
+./build_friendfinder.sh
+```
 
 ### Frontend Build
 ```sh
