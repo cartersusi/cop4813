@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import json
+import uuid
 
 from server.auth.auth import verify_session
 from server.db.db import DatabaseManager
@@ -66,6 +67,100 @@ class DashboardData(BaseModel):
     timeSeriesData: List[TimeSeriesData]
     topFeatures: List[TopFeatures]
     personalityDistribution: List[PersonalityDistribution]
+
+class UserListItem(BaseModel):
+    id: int
+    username: str
+    email: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    is_active: bool
+    is_deleted: bool
+    last_login_at: Optional[datetime]
+    created_at: datetime
+    roles: List[str]
+
+class UserDetail(BaseModel):
+    id: int
+    username: str
+    email: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    bio: Optional[str]
+    avatar_url: Optional[str]
+    is_active: bool
+    is_deleted: bool
+    email_verified: bool
+    last_login_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    roles: List[str]
+    personality_results: Optional[Dict[str, float]]
+    friend_count: int
+    post_count: int
+
+class UpdateUserRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    bio: Optional[str] = None
+    is_active: Optional[bool] = None
+    roles: Optional[List[str]] = None
+
+class CreateUserRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    first_name: str
+    last_name: str
+    bio: Optional[str] = None
+    roles: List[str] = ["user"]
+
+# Content Moderation Models
+class PostItem(BaseModel):
+    id: int
+    title: str
+    body: Optional[str]
+    user_id: int
+    username: str
+    status: str
+    visibility: str
+    created_at: datetime
+    updated_at: datetime
+    is_flagged: bool
+
+class PostDetail(BaseModel):
+    id: int
+    title: str
+    body: Optional[str]
+    user_id: int
+    username: str
+    user_email: str
+    status: str
+    visibility: str
+    created_at: datetime
+    updated_at: datetime
+    is_flagged: bool
+    flag_reason: Optional[str]
+    flagged_by: Optional[int]
+    flagged_at: Optional[datetime]
+
+class UpdatePostRequest(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    status: Optional[str] = None
+    visibility: Optional[str] = None
+
+class FlagPostRequest(BaseModel):
+    reason: str
+
+class CreatePostRequest(BaseModel):
+    title: str
+    body: str
+    user_id: int
+    status: str = "published"
+    visibility: str = "public"
 
 async def verify_admin_session(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify that the user has admin role"""
@@ -486,3 +581,608 @@ def get_personality_distribution(db: DatabaseManager) -> List[PersonalityDistrib
             PersonalityDistribution(trait="Emotional Stability", average=58.9, count=1156),
             PersonalityDistribution(trait="Intellect/Imagination", average=71.2, count=1156),
         ]
+
+# USER MANAGEMENT ENDPOINTS
+
+@admin_router.get("/users", response_model=List[UserListItem])
+async def get_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Get paginated list of users with filtering"""
+    try:
+        db = DatabaseManager()
+        
+        # Build WHERE conditions
+        conditions = ["u.is_deleted = FALSE"]
+        params = []
+        
+        if search:
+            conditions.append("(u.username ILIKE %s OR u.email ILIKE %s OR u.first_name ILIKE %s OR u.last_name ILIKE %s)")
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param, search_param])
+        
+        if role and role != "all":
+            conditions.append("""
+                u.id IN (
+                    SELECT ur.user_id FROM user_roles ur
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE r.name = %s
+                )
+            """)
+            params.append(role)
+        
+        if status == "active":
+            conditions.append("u.is_active = TRUE")
+        elif status == "inactive":
+            conditions.append("u.is_active = FALSE")
+        
+        where_clause = " AND ".join(conditions)
+        offset = (page - 1) * limit
+        
+        # Get users with their roles
+        cursor = db.execute_query(f"""
+            SELECT 
+                u.id, u.username, u.email, u.first_name, u.last_name,
+                u.is_active, u.is_deleted, u.last_login_at, u.created_at,
+                COALESCE(
+                    ARRAY_AGG(r.name) FILTER (WHERE r.name IS NOT NULL), 
+                    ARRAY[]::varchar[]
+                ) as roles
+            FROM users u
+            LEFT JOIN user_roles ur ON u.id = ur.user_id
+            LEFT JOIN roles r ON ur.role_id = r.id AND r.is_active = TRUE
+            WHERE {where_clause}
+            GROUP BY u.id, u.username, u.email, u.first_name, u.last_name,
+                     u.is_active, u.is_deleted, u.last_login_at, u.created_at
+            ORDER BY u.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        
+        users = cursor.fetchall()
+        
+        return [
+            UserListItem(
+                id=user['id'],
+                username=user['username'],
+                email=user['email'],
+                first_name=user['first_name'],
+                last_name=user['last_name'],
+                is_active=user['is_active'],
+                is_deleted=user['is_deleted'],
+                last_login_at=user['last_login_at'],
+                created_at=user['created_at'],
+                roles=user['roles'] or []
+            ) for user in users
+        ]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch users: {str(e)}")
+
+@admin_router.get("/users/{user_id}", response_model=UserDetail)
+async def get_user_detail(
+    user_id: int,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Get detailed information about a specific user"""
+    try:
+        db = DatabaseManager()
+        
+        # Get user details with roles
+        cursor = db.execute_query("""
+            SELECT 
+                u.id, u.username, u.email, u.first_name, u.last_name, u.bio, u.avatar_url,
+                u.is_active, u.is_deleted, u.email_verified, u.last_login_at, 
+                u.created_at, u.updated_at,
+                COALESCE(
+                    ARRAY_AGG(r.name) FILTER (WHERE r.name IS NOT NULL), 
+                    ARRAY[]::varchar[]
+                ) as roles
+            FROM users u
+            LEFT JOIN user_roles ur ON u.id = ur.user_id
+            LEFT JOIN roles r ON ur.role_id = r.id AND r.is_active = TRUE
+            WHERE u.id = %s
+            GROUP BY u.id, u.username, u.email, u.first_name, u.last_name, u.bio, u.avatar_url,
+                     u.is_active, u.is_deleted, u.email_verified, u.last_login_at, 
+                     u.created_at, u.updated_at
+        """, (user_id,))
+        
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get personality results
+        cursor = db.execute_query("""
+            SELECT extraversion, agreeableness, conscientiousness, 
+                   emotional_stability, intellect_imagination
+            FROM results 
+            WHERE user_id = %s AND is_current = TRUE
+        """, (user_id,))
+        
+        personality_results = cursor.fetchone()
+        personality_dict = None
+        if personality_results:
+            personality_dict = {
+                "extraversion": personality_results['extraversion'],
+                "agreeableness": personality_results['agreeableness'],
+                "conscientiousness": personality_results['conscientiousness'],
+                "emotional_stability": personality_results['emotional_stability'],
+                "intellect_imagination": personality_results['intellect_imagination']
+            }
+        
+        # Get friend count
+        cursor = db.execute_query("""
+            SELECT COUNT(*) as count FROM friends 
+            WHERE (user_id = %s OR friend_user_id = %s) AND status = 'accepted'
+        """, (user_id, user_id))
+        friend_count = cursor.fetchone()['count']
+        
+        # Get post count
+        cursor = db.execute_query("""
+            SELECT COUNT(*) as count FROM posts 
+            WHERE user_id = %s AND status != 'deleted'
+        """, (user_id,))
+        post_count = cursor.fetchone()['count']
+        
+        return UserDetail(
+            id=user['id'],
+            username=user['username'],
+            email=user['email'],
+            first_name=user['first_name'],
+            last_name=user['last_name'],
+            bio=user['bio'],
+            avatar_url=user['avatar_url'],
+            is_active=user['is_active'],
+            is_deleted=user['is_deleted'],
+            email_verified=user['email_verified'],
+            last_login_at=user['last_login_at'],
+            created_at=user['created_at'],
+            updated_at=user['updated_at'],
+            roles=user['roles'] or [],
+            personality_results=personality_dict,
+            friend_count=friend_count,
+            post_count=post_count
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch user details: {str(e)}")
+
+@admin_router.put("/users/{user_id}")
+async def update_user(
+    user_id: int,
+    request: UpdateUserRequest,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Update user information"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if user exists
+        cursor = db.execute_query("SELECT id FROM users WHERE id = %s", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Build update query
+        update_fields = []
+        params = []
+        
+        if request.username is not None:
+            update_fields.append("username = %s")
+            params.append(request.username)
+        
+        if request.email is not None:
+            update_fields.append("email = %s")
+            params.append(request.email)
+        
+        if request.first_name is not None:
+            update_fields.append("first_name = %s")
+            params.append(request.first_name)
+        
+        if request.last_name is not None:
+            update_fields.append("last_name = %s")
+            params.append(request.last_name)
+        
+        if request.bio is not None:
+            update_fields.append("bio = %s")
+            params.append(request.bio)
+        
+        if request.is_active is not None:
+            update_fields.append("is_active = %s")
+            params.append(request.is_active)
+        
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(user_id)
+            
+            db.execute_query(f"""
+                UPDATE users 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+            """, params)
+        
+        # Update roles if provided
+        if request.roles is not None:
+            # Remove existing roles
+            db.execute_query("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
+            
+            # Add new roles
+            for role_name in request.roles:
+                cursor = db.execute_query("SELECT id FROM roles WHERE name = %s", (role_name,))
+                role = cursor.fetchone()
+                if role:
+                    db.execute_query("""
+                        INSERT INTO user_roles (user_id, role_id, assigned_by, assigned_at)
+                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (user_id, role['id'], session_data['user_id']))
+        
+        return {"success": True, "message": "User updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
+
+@admin_router.post("/users", response_model=dict)
+async def create_user(
+    request: CreateUserRequest,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Create a new user"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if username or email already exists
+        cursor = db.execute_query("""
+            SELECT id FROM users WHERE username = %s OR email = %s
+        """, (request.username, request.email))
+        
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+        
+        # Create user
+        user_id = db.create_user(
+            username=request.username,
+            email=request.email,
+            password=request.password,
+            first_name=request.first_name,
+            last_name=request.last_name
+        )
+        
+        if not user_id:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+        
+        # Update bio if provided
+        if request.bio:
+            db.execute_query("UPDATE users SET bio = %s WHERE id = %s", (request.bio, user_id))
+        
+        # Assign roles
+        for role_name in request.roles:
+            try:
+                db.assign_role_to_user(user_id, role_name, session_data['user_id'])
+            except Exception as e:
+                print(f"Warning: Could not assign role {role_name}: {e}")
+        
+        return {"success": True, "message": "User created successfully", "user_id": user_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+
+@admin_router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    permanent: bool = Query(False),
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Delete or soft-delete a user"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if user exists
+        cursor = db.execute_query("SELECT id FROM users WHERE id = %s", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Prevent self-deletion
+        if user_id == session_data['user_id']:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        if permanent:
+            # Hard delete - remove all related data
+            db.execute_query("DELETE FROM user_sessions WHERE user_id = %s", (user_id,))
+            db.execute_query("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
+            db.execute_query("DELETE FROM results WHERE user_id = %s", (user_id,))
+            db.execute_query("DELETE FROM friends WHERE user_id = %s OR friend_user_id = %s", (user_id, user_id))
+            db.execute_query("DELETE FROM posts WHERE user_id = %s", (user_id,))
+            db.execute_query("DELETE FROM users WHERE id = %s", (user_id,))
+            message = "User permanently deleted"
+        else:
+            # Soft delete
+            db.execute_query("""
+                UPDATE users 
+                SET is_deleted = TRUE, is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (user_id,))
+            
+            # Deactivate sessions
+            db.execute_query("UPDATE user_sessions SET is_active = FALSE WHERE user_id = %s", (user_id,))
+            message = "User deactivated"
+        
+        return {"success": True, "message": message}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+
+# CONTENT MODERATION ENDPOINTS
+
+@admin_router.get("/posts", response_model=List[PostItem])
+async def get_posts(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None,
+    flagged_only: bool = Query(False),
+    search: Optional[str] = None,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Get paginated list of posts for moderation"""
+    try:
+        db = DatabaseManager()
+        
+        # Build WHERE conditions
+        conditions = ["p.status != 'deleted'"]
+        params = []
+        
+        if status and status != "all":
+            conditions.append("p.status = %s")
+            params.append(status)
+        
+        if flagged_only:
+            conditions.append("p.is_flagged = TRUE")
+        
+        if search:
+            conditions.append("(p.title ILIKE %s OR p.body ILIKE %s)")
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param])
+        
+        where_clause = " AND ".join(conditions)
+        offset = (page - 1) * limit
+        
+        cursor = db.execute_query(f"""
+            SELECT 
+                p.id, p.title, p.body, p.user_id, u.username,
+                p.status, p.visibility, p.created_at, p.updated_at,
+                COALESCE(p.is_flagged, FALSE) as is_flagged
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE {where_clause}
+            ORDER BY p.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        
+        posts = cursor.fetchall()
+        
+        return [
+            PostItem(
+                id=post['id'],
+                title=post['title'],
+                body=post['body'],
+                user_id=post['user_id'],
+                username=post['username'],
+                status=post['status'],
+                visibility=post['visibility'],
+                created_at=post['created_at'],
+                updated_at=post['updated_at'],
+                is_flagged=post['is_flagged']
+            ) for post in posts
+        ]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch posts: {str(e)}")
+
+@admin_router.get("/posts/{post_id}", response_model=PostDetail)
+async def get_post_detail(
+    post_id: int,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Get detailed information about a specific post"""
+    try:
+        db = DatabaseManager()
+        
+        cursor = db.execute_query("""
+            SELECT 
+                p.id, p.title, p.body, p.user_id, u.username, u.email,
+                p.status, p.visibility, p.created_at, p.updated_at,
+                COALESCE(p.is_flagged, FALSE) as is_flagged,
+                p.flag_reason, p.flagged_by, p.flagged_at
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.id = %s
+        """, (post_id,))
+        
+        post = cursor.fetchone()
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        return PostDetail(
+            id=post['id'],
+            title=post['title'],
+            body=post['body'],
+            user_id=post['user_id'],
+            username=post['username'],
+            user_email=post['email'],
+            status=post['status'],
+            visibility=post['visibility'],
+            created_at=post['created_at'],
+            updated_at=post['updated_at'],
+            is_flagged=post['is_flagged'],
+            flag_reason=post['flag_reason'],
+            flagged_by=post['flagged_by'],
+            flagged_at=post['flagged_at']
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch post details: {str(e)}")
+
+@admin_router.put("/posts/{post_id}")
+async def update_post(
+    post_id: int,
+    request: UpdatePostRequest,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Update post information"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if post exists
+        cursor = db.execute_query("SELECT id FROM posts WHERE id = %s", (post_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Build update query
+        update_fields = []
+        params = []
+        
+        if request.title is not None:
+            update_fields.append("title = %s")
+            params.append(request.title)
+        
+        if request.body is not None:
+            update_fields.append("body = %s")
+            params.append(request.body)
+        
+        if request.status is not None:
+            update_fields.append("status = %s")
+            params.append(request.status)
+        
+        if request.visibility is not None:
+            update_fields.append("visibility = %s")
+            params.append(request.visibility)
+        
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(post_id)
+            
+            db.execute_query(f"""
+                UPDATE posts 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+            """, params)
+        
+        return {"success": True, "message": "Post updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update post: {str(e)}")
+
+@admin_router.post("/posts/{post_id}/flag")
+async def flag_post(
+    post_id: int,
+    request: FlagPostRequest,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Flag a post as inappropriate"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if post exists
+        cursor = db.execute_query("SELECT id FROM posts WHERE id = %s", (post_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Add is_flagged column if it doesn't exist
+        try:
+            db.execute_query("""
+                ALTER TABLE posts 
+                ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS flag_reason TEXT,
+                ADD COLUMN IF NOT EXISTS flagged_by INTEGER REFERENCES users(id),
+                ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMP
+            """)
+        except:
+            pass  # Column might already exist
+        
+        # Flag the post
+        db.execute_query("""
+            UPDATE posts 
+            SET is_flagged = TRUE, flag_reason = %s, flagged_by = %s, flagged_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (request.reason, session_data['user_id'], post_id))
+        
+        return {"success": True, "message": "Post flagged successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to flag post: {str(e)}")
+
+@admin_router.delete("/posts/{post_id}")
+async def delete_post(
+    post_id: int,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Delete a post"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if post exists
+        cursor = db.execute_query("SELECT id FROM posts WHERE id = %s", (post_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Soft delete the post
+        db.execute_query("""
+            UPDATE posts 
+            SET status = 'deleted', updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (post_id,))
+        
+        return {"success": True, "message": "Post deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete post: {str(e)}")
+
+@admin_router.post("/posts")
+async def create_post(
+    request: CreatePostRequest,
+    session_data: dict = Depends(verify_admin_session)
+):
+    """Create a new post"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if user exists
+        cursor = db.execute_query("SELECT id FROM users WHERE id = %s", (request.user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Create post
+        cursor = db.execute_query("""
+            INSERT INTO posts (title, body, user_id, status, visibility, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
+        """, (request.title, request.body, request.user_id, request.status, request.visibility))
+        
+        post = cursor.fetchone()
+        if not post:
+            raise HTTPException(status_code=500, detail="Failed to create post")
+        
+        return {"success": True, "message": "Post created successfully", "post_id": post['id']}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create post: {str(e)}")

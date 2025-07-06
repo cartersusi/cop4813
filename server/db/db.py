@@ -280,6 +280,10 @@ class DatabaseManager:
                 status VARCHAR(20) DEFAULT 'draft',
                 visibility VARCHAR(20) DEFAULT 'public',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_flagged BOOLEAN DEFAULT FALSE,
+                flag_reason TEXT,
+                flagged_by INTEGER REFERENCES users(id),
+                flagged_at TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -296,6 +300,15 @@ class DatabaseManager:
             """)
         except psycopg2.errors.DuplicateObject:
             # Constraint already exists, ignore the error
+            pass
+        
+        try:
+            self.execute_query("""
+                CREATE INDEX IF NOT EXISTS idx_posts_flagged 
+                ON posts(is_flagged) WHERE is_flagged = TRUE
+            """)
+        except psycopg2.errors.DuplicateObject:
+            # Index already exists, ignore the error
             pass
         
         print("All tables created successfully")
