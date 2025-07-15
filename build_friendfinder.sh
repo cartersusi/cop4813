@@ -52,44 +52,74 @@ success() {
 }
 
 install_homebrew() {
-    if ! command -v brew &> /dev/null; then
-        info "Installing Homebrew..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        if [[ $? -ne 0 ]]; then
-            error "Failed to install Homebrew. Please check your internet connection or try again later."
-        else
-            success "Homebrew installed successfully."
-            info "Please add Homebrew to your PATH by adding the following line to your shell configuration file (e.g., ~/.bashrc, ~/.zshrc):"
-
-            if [[ "$SHELL" == */zsh ]]; then
-                shell_config_file=~/.zshrc
-            elif [[ "$SHELL" == */bash ]]; then
-                shell_config_file=~/.bash_profile
+    if [[ "$platform" == "Darwin arm64" ]]; then
+        if ! command -v brew &> /dev/null; then
+            info "Installing Homebrew..."
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            if [[ $? -ne 0 ]]; then
+                error "Failed to install Homebrew. Please check your internet connection or try again later."
             else
-                warning "Unknown shell: $SHELL. Please add Homebrew to your PATH manually."
-                info "Add the following line to your shell configuration file:"
-                info_bold "export PATH=\"/opt/homebrew/bin:\$PATH\""
-                return
+                success "Homebrew installed successfully."
+                info "Please add Homebrew to your PATH by adding the following line to your shell configuration file (e.g., ~/.bashrc, ~/.zshrc):"
+
+                if [[ "$SHELL" == */zsh ]]; then
+                    shell_config_file=~/.zshrc
+                elif [[ "$SHELL" == */bash ]]; then
+                    shell_config_file=~/.bash_profile
+                else
+                    warning "Unknown shell: $SHELL. Please add Homebrew to your PATH manually."
+                    info "Add the following line to your shell configuration file:"
+                    info_bold "export PATH=\"/opt/homebrew/bin:\$PATH\""
+                    return
+                fi
+                
+                echo -e "\nexport PATH=\"/opt/homebrew/bin:\$PATH\"" >> "$shell_config_file"
             fi
-            
-            echo -e "\nexport PATH=\"/opt/homebrew/bin:\$PATH\"" >> "$shell_config_file"
+        else
+            success "Homebrew is already installed."
         fi
     else
-        success "Homebrew is already installed."
+        warning "This script is designed for macOS ARM64 architecture only. Homebrew installation skipped."
+        warning "Using linux package managers for dependencies."
     fi
 }
 
-install_npm() {
-    if ! command -v npm &> /dev/null; then
-        info "Installing Node.js and npm..."
-        brew install node
-        if [[ $? -ne 0 ]]; then
-            error "Failed to install Node.js and npm. Please check your internet connection or try again later."
+install_deps() {
+    if ! command -v npm &> /dev/null || ! command -v node &> /dev/null || ! command -v docker &> /dev/null; then
+        info "Installing Node.js, npm, and docker..."
+        if [[ "$platform" == "Darwin arm64" ]]; then
+            brew install node docker
+        elif [[ "$platform" == "Linux" ]]; then
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update
+                sudo apt-get install -y nodejs npm docker
+            elif command -v yum &> /dev/null; then
+                sudo yum update -y
+                sudo yum install -y nodejs npm docker
+            elif command -v dnf &> /dev/null; then
+                sudo dnf update -y
+                sudo dnf install -y nodejs npm docker
+            elif command -v pacman &> /dev/null; then
+                sudo pacman -Syu nodejs npm docker
+            elif command -v zypper &> /dev/null; then
+                sudo zypper refresh
+                sudo zypper install -y nodejs npm docker
+            elif command -v apk &> /dev/null; then
+                sudo apk update
+                sudo apk add nodejs npm docker
+            else
+                error "Unsupported package manager. Please install Node.js and npm manually."
+            fi
         else
-            success "Node.js and npm installed successfully."
+            error "Unsupported platform: $platform. Please install Node.js and npm manually."
+        fi
+        if [[ $? -ne 0 ]]; then
+            error "Failed to install Node.js, npm, and docker. Please check your internet connection or try again later."
+        else
+            success "Node.js, npm, and docker installed successfully."
         fi
     else
-        success "npm is already installed."
+        success "Node.js, npm, and docker is already installed."
     fi
 }
 
@@ -115,7 +145,12 @@ build_frontend() {
 # docker build --platform linux/arm64 -t friend-finder-service .
 build_docker_image() {
     info "Building Docker image for Friend Finder service..."
-    docker build --platform linux/arm64 -t friend-finder-service .
+    # Check architecture
+    if [[ "$platform" = "Darwin arm64" ]]; then
+        docker build --platform linux/arm64 -t friend-finder-service .
+    else
+        docker build --platform linux/amd64 -t friend-finder-service .
+    fi
     if [[ $? -ne 0 ]]; then
         error "Failed to build Docker image. Please check the output for errors."
     else
@@ -131,7 +166,7 @@ main() {
     fi
 
     install_homebrew
-    install_npm
+    install_deps
     build_frontend
     build_docker_image
 
