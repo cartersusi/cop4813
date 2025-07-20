@@ -3,7 +3,8 @@
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Progress } from "../components/ui/progress"
-import { Users, Share2, UserPlus, CheckCircle2 } from "lucide-react"
+import { Alert, AlertDescription } from "../components/ui/alert"
+import { Share2, UserPlus, CheckCircle2, Save, RefreshCw } from "lucide-react"
 import { useState } from "react"
 import type { PersonalityScores } from "../types/quiz"
 import { formatFactorName, getPersonalityDescription } from "../lib/calculate-scores"
@@ -12,9 +13,17 @@ interface ResultsPageProps {
   scores: PersonalityScores
   onSignUp: () => void
   onRetakeQuiz: () => void
+  isLoggedIn?: boolean
+  resultsSaved?: boolean
 }
 
-export default function Results({ scores, onSignUp, onRetakeQuiz }: ResultsPageProps) {
+export default function Results({ 
+  scores, 
+  onSignUp, 
+  onRetakeQuiz, 
+  isLoggedIn = false, 
+  resultsSaved = false 
+}: ResultsPageProps) {
   const [copied, setCopied] = useState(false)
 
   const handleShare = async () => {
@@ -37,7 +46,6 @@ Take the quiz yourself: ${window.location.origin}/quiz`
     }
   }
 
-
   const getScoreLevel = (score: number) => {
     if (score >= 75) return "Very High"
     if (score >= 50) return "High"
@@ -55,14 +63,6 @@ Take the quiz yourself: ${window.location.origin}/quiz`
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center space-x-2">
-          <Users className="h-8 w-8 text-indigo-600" />
-          <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
-        </div>
-      </header>
-
       {/* Results Content */}
       <main className="container mx-auto px-4 pb-12">
         <div className="max-w-4xl mx-auto">
@@ -76,16 +76,52 @@ Take the quiz yourself: ${window.location.origin}/quiz`
               </p>
             </div>
 
+            {/* Status Alert */}
+            {isLoggedIn ? (
+              resultsSaved ? (
+                <Alert className="max-w-md mx-auto mb-6 border-green-200 bg-green-50">
+                  <Save className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    Your results have been saved to your profile!
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert className="max-w-md mx-auto mb-6 border-blue-200 bg-blue-50">
+                  <RefreshCw className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800">
+                    Saving your results...
+                  </AlertDescription>
+                </Alert>
+              )
+            ) : (
+              <Alert className="max-w-md mx-auto mb-6 border-amber-200 bg-amber-50">
+                <UserPlus className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  Sign up to save your results and find compatible friends!
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Action Buttons */}
             <div className="flex flex-wrap justify-center gap-4 mb-8">
               <Button onClick={handleShare} variant="outline" className="flex items-center space-x-2">
                 {copied ? <CheckCircle2 className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
                 <span>{copied ? "Copied!" : "Share Results"}</span>
               </Button>
-              <Button onClick={onSignUp} className="flex items-center space-x-2">
-                <UserPlus className="h-4 w-4" />
-                <span>Sign Up & Save Results</span>
-              </Button>
+              
+              {!isLoggedIn && (
+                <Button onClick={onSignUp} className="flex items-center space-x-2">
+                  <UserPlus className="h-4 w-4" />
+                  <span>Sign Up & Save Results</span>
+                </Button>
+              )}
+              
+              {isLoggedIn && (
+                <Button onClick={() => window.location.href = '/discover'} className="flex items-center space-x-2">
+                  <UserPlus className="h-4 w-4" />
+                  <span>Find Compatible Friends</span>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -144,18 +180,37 @@ Take the quiz yourself: ${window.location.origin}/quiz`
 
           {/* Next Steps */}
           <div className="text-center space-y-4">
-            <h3 className="text-2xl font-bold text-gray-900">Ready to Find Your Perfect Matches?</h3>
-            <p className="text-gray-600 mb-6">
-              Sign up to save your results and start connecting with compatible friends in your area.
-            </p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <Button size="lg" onClick={onSignUp} className="text-lg px-8 py-4">
-                Create Your Profile
-              </Button>
-              <Button size="lg" variant="outline" onClick={onRetakeQuiz}>
-                Retake Quiz
-              </Button>
-            </div>
+            {isLoggedIn ? (
+              <>
+                <h3 className="text-2xl font-bold text-gray-900">Ready to Find Your Perfect Matches?</h3>
+                <p className="text-gray-600 mb-6">
+                  Your results are saved! Start connecting with compatible friends in your area.
+                </p>
+                <div className="flex flex-wrap justify-center gap-4">
+                  <Button size="lg" onClick={() => window.location.href = '/discover'} className="text-lg px-8 py-4">
+                    Find Compatible Friends
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={onRetakeQuiz}>
+                    Retake Quiz
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-2xl font-bold text-gray-900">Ready to Find Your Perfect Matches?</h3>
+                <p className="text-gray-600 mb-6">
+                  Sign up to save your results and start connecting with compatible friends in your area.
+                </p>
+                <div className="flex flex-wrap justify-center gap-4">
+                  <Button size="lg" onClick={onSignUp} className="text-lg px-8 py-4">
+                    Create Your Profile
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={onRetakeQuiz}>
+                    Retake Quiz
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </main>

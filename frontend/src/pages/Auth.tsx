@@ -1,14 +1,15 @@
 "use client"
 
 import type React from "react"
+import { useLocation, useNavigate } from 'react-router-dom'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Alert, AlertDescription } from "../components/ui/alert"
-import { Users, Mail, Lock, User, Loader2 } from "lucide-react"
+import { Mail, Lock, User, Loader2, CheckCircle2, Save } from "lucide-react"
 import { useAuth } from "../hooks/use-auth"
 import type { PersonalityScores } from "../types/quiz"
 
@@ -26,8 +27,16 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
     confirmPassword: "",
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [savingResults, setSavingResults] = useState(false)
+  const [resultsSaved, setResultsSaved] = useState(false)
 
-  const { login, signup, loading, error } = useAuth()
+  const { login, signup, loading, error, user } = useAuth()
+
+  const location = useLocation()
+  const navigate = useNavigate()
+  
+  // Get the page they came from, or default to home
+  const from = location.state?.from?.pathname || '/'
 
   const validateForm = () => {
     const errors: Record<string, string> = {}
@@ -59,6 +68,42 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
     return Object.keys(errors).length === 0
   }
 
+  const saveQuizResults = async (scores: PersonalityScores) => {
+    try {
+      setSavingResults(true)
+      
+      const response = await fetch("/api/quiz/save-results", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("session_id")}`,
+        },
+        body: JSON.stringify({
+          extraversion: scores.extraversion,
+          agreeableness: scores.agreeableness,
+          conscientiousness: scores.conscientiousness,
+          emotional_stability: scores.emotional_stability,
+          intellect_imagination: scores.intellect_imagination,
+          test_version: "1.0",
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save quiz results")
+      }
+
+      const data = await response.json()
+      console.log("Quiz results saved successfully:", data)
+      setResultsSaved(true)
+      return true
+    } catch (error) {
+      console.error("Error saving quiz results:", error)
+      return false
+    } finally {
+      setSavingResults(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -80,7 +125,17 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
       }
 
       if (result.success) {
+        // If we have personality scores to save, save them now
+        if (personalityScores) {
+          await saveQuizResults(personalityScores)
+        }
+        
         onAuthSuccess?.()
+        
+        // Navigate with a small delay to show the success message
+        setTimeout(() => {
+          navigate(from, { replace: true })
+        }, personalityScores ? 2000 : 500)
       }
     } catch (err) {
       console.error("Auth error:", err)
@@ -94,15 +149,15 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
     }
   }
 
+  // Auto-save results if user becomes available and we have pending scores
+  useEffect(() => {
+    if (user && personalityScores && !resultsSaved && !savingResults) {
+      saveQuizResults(personalityScores)
+    }
+  }, [user, personalityScores, resultsSaved, savingResults])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center space-x-2">
-          <Users className="h-8 w-8 text-indigo-600" />
-          <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
-        </div>
-      </header>
 
       {/* Auth Content */}
       <main className="container mx-auto px-4 pb-12">
@@ -111,11 +166,38 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
           {personalityScores && (
             <Card className="border-0 shadow-lg bg-green-50 border-green-200 mb-8">
               <CardHeader className="text-center">
-                <CardTitle className="text-green-800">Quiz Complete! 🎉</CardTitle>
+                <CardTitle className="text-green-800 flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" />
+                  Quiz Complete! 🎉
+                </CardTitle>
                 <CardDescription className="text-green-700">
-                  Sign up to save your personality results and find compatible friends
+                  {resultsSaved 
+                    ? "Your personality results have been saved to your profile!"
+                    : "Sign up to save your personality results and find compatible friends"
+                  }
                 </CardDescription>
               </CardHeader>
+              {(savingResults || resultsSaved) && (
+                <CardContent className="pt-0">
+                  <Alert className={`border-0 ${resultsSaved ? 'bg-green-100' : 'bg-blue-100'}`}>
+                    {savingResults ? (
+                      <>
+                        <Save className="h-4 w-4 text-blue-600" />
+                        <AlertDescription className="text-blue-800">
+                          Saving your quiz results...
+                        </AlertDescription>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800">
+                          Your quiz results have been saved successfully!
+                        </AlertDescription>
+                      </>
+                    )}
+                  </Alert>
+                </CardContent>
+              )}
             </Card>
           )}
 
@@ -144,7 +226,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                         value={formData.name}
                         onChange={(e) => handleInputChange("name", e.target.value)}
                         className="pl-10"
-                        disabled={loading}
+                        disabled={loading || savingResults}
                       />
                     </div>
                     {formErrors.name && <p className="text-sm text-red-600">{formErrors.name}</p>}
@@ -163,7 +245,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                       value={formData.email}
                       onChange={(e) => handleInputChange("email", e.target.value)}
                       className="pl-10"
-                      disabled={loading}
+                      disabled={loading || savingResults}
                     />
                   </div>
                   {formErrors.email && <p className="text-sm text-red-600">{formErrors.email}</p>}
@@ -181,7 +263,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                       value={formData.password}
                       onChange={(e) => handleInputChange("password", e.target.value)}
                       className="pl-10"
-                      disabled={loading}
+                      disabled={loading || savingResults}
                     />
                   </div>
                   {formErrors.password && <p className="text-sm text-red-600">{formErrors.password}</p>}
@@ -200,7 +282,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                         value={formData.confirmPassword}
                         onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
                         className="pl-10"
-                        disabled={loading}
+                        disabled={loading || savingResults}
                       />
                     </div>
                     {formErrors.confirmPassword && <p className="text-sm text-red-600">{formErrors.confirmPassword}</p>}
@@ -215,11 +297,19 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                 )}
 
                 {/* Submit Button */}
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
+                <Button type="submit" className="w-full" disabled={loading || savingResults || resultsSaved}>
+                  {loading || savingResults ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {isLogin ? "Signing In..." : "Creating Account..."}
+                      {loading 
+                        ? (isLogin ? "Signing In..." : "Creating Account...")
+                        : "Saving Results..."
+                      }
+                    </>
+                  ) : resultsSaved ? (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Success! Redirecting...
                     </>
                   ) : (
                     <>{isLogin ? "Sign In" : "Create Account"}</>
@@ -235,7 +325,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
                     variant="link"
                     onClick={() => setIsLogin(!isLogin)}
                     className="ml-1 p-0 h-auto font-semibold"
-                    disabled={loading}
+                    disabled={loading || savingResults}
                   >
                     {isLogin ? "Sign up" : "Sign in"}
                   </Button>

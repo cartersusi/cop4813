@@ -6,6 +6,9 @@ import os
 
 from server.auth.auth import auth_router
 from server.admin.admin_routes import admin_router
+from server.user.user_routes import user_router, friends_router
+from server.knn.quiz_routes import quiz_router
+from server.knn.discover import discover_router
 
 
 # Create FastAPI instance
@@ -27,6 +30,10 @@ static_dir = "./frontend/dist"
 # Auth routes
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(user_router)
+app.include_router(friends_router)
+app.include_router(quiz_router)
+app.include_router(discover_router)
 
 @app.get("/")
 async def root():

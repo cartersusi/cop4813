@@ -5,14 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Progress } from "../components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group"
 import { Label } from "../components/ui/label"
-import { Users, ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
+import { useState, useEffect } from "react"
 import { QUIZ_QUESTIONS } from "../data/quiz-questions"
 import { useQuiz } from "../hooks/use-quiz"
 import ResultsPage from "./Results"
+import Auth from "./Auth"
 import { calculatePersonalityScores } from "../lib/calculate-scores"
-
+import { useAuth } from "../hooks/use-auth"
+import type { PersonalityScores } from "../types/quiz"
 
 export default function QuizPage() {
+  const { user } = useAuth()
+  const [showAuth, setShowAuth] = useState(false)
+  const [pendingScores, setPendingScores] = useState<PersonalityScores | null>(null)
+  const [saveAttempted, setSaveAttempted] = useState(false)
+
   const {
     quizState,
     currentQuestion,
@@ -43,20 +51,114 @@ export default function QuizPage() {
     goToPrevious()
   }
 
+  const saveQuizResults = async (scores: PersonalityScores) => {
+    if (!user) {
+      console.log("No user logged in, cannot save results")
+      return false
+    }
+
+    try {
+      const response = await fetch("/api/quiz/save-results", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("session_id")}`,
+        },
+        body: JSON.stringify({
+          extraversion: scores.extraversion,
+          agreeableness: scores.agreeableness,
+          conscientiousness: scores.conscientiousness,
+          emotional_stability: scores.emotional_stability,
+          intellect_imagination: scores.intellect_imagination,
+          test_version: "1.0",
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save quiz results")
+      }
+
+      const data = await response.json()
+      console.log("Quiz results saved successfully:", data)
+      return true
+    } catch (error) {
+      console.error("Error saving quiz results:", error)
+      return false
+    }
+  }
+
+  const handleQuizComplete = async () => {
+    const personalityScores = calculatePersonalityScores(quizState.answers, QUIZ_QUESTIONS)
+    
+    if (user && !saveAttempted) {
+      // User is logged in, save results immediately
+      setSaveAttempted(true)
+      await saveQuizResults(personalityScores)
+    } else if (!user) {
+      // User not logged in, store scores for later
+      setPendingScores(personalityScores)
+    }
+    
+    return personalityScores
+  }
+
+  const handleSignUpFromResults = () => {
+    setShowAuth(true)
+  }
+
+  const handleAuthSuccess = async () => {
+    setShowAuth(false)
+    
+    // If we have pending scores, save them now
+    if (pendingScores && !saveAttempted) {
+      setSaveAttempted(true)
+      await saveQuizResults(pendingScores)
+      setPendingScores(null)
+    }
+  }
+
+  const handleRetakeQuiz = () => {
+    resetQuiz()
+    setPendingScores(null)
+    setSaveAttempted(false)
+    setShowAuth(false)
+  }
+
+  // Effect to save results when user logs in with pending scores
+  useEffect(() => {
+    if (user && pendingScores && !saveAttempted) {
+      setSaveAttempted(true)
+      saveQuizResults(pendingScores).then(() => {
+        setPendingScores(null)
+      })
+    }
+  }, [user, pendingScores, saveAttempted])
+
   const currentAnswer = getCurrentAnswer()
   const canProceed = currentAnswer !== undefined
 
+  // Show auth page if user clicked sign up from results
+  if (showAuth) {
+    return (
+      <Auth
+        personalityScores={pendingScores || undefined}
+        onAuthSuccess={handleAuthSuccess}
+      />
+    )
+  }
+
+  // Show results page when quiz is complete
   if (quizState.isComplete) {
-    const personalityScores = calculatePersonalityScores(quizState.answers, QUIZ_QUESTIONS)
+    const personalityScores = pendingScores || handleQuizComplete()
 
     return (
       <ResultsPage
+        // @ts-ignore
         scores={personalityScores}
-        onSignUp={() => {
-          // TODO: Navigate to sign up page
-          console.log("Navigate to sign up")
-        }}
-        onRetakeQuiz={resetQuiz}
+        onSignUp={handleSignUpFromResults}
+        onRetakeQuiz={handleRetakeQuiz}
+        isLoggedIn={!!user}
+        resultsSaved={!!user && saveAttempted}
       />
     )
   }
@@ -67,19 +169,6 @@ export default function QuizPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Users className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
-          </div>
-          <div className="text-sm text-gray-600">
-            Question {quizState.currentQuestion + 1} of {QUIZ_QUESTIONS.length}
-          </div>
-        </div>
-      </header>
-
       {/* Progress Bar */}
       <div className="container mx-auto px-4 mb-8">
         <div className="max-w-4xl mx-auto">
@@ -155,6 +244,11 @@ export default function QuizPage() {
               This assessment is designed to identify your natural talents and strengths. Answer honestly based on your
               instincts and preferences.
             </p>
+            {user && (
+              <p className="mt-2 text-green-600 font-medium">
+                ✓ Logged in as {user.email} - Your results will be saved automatically
+              </p>
+            )}
           </div>
         </div>
       </main>

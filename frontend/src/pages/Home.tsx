@@ -1,22 +1,10 @@
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
-import { Users, Heart, Zap, Target, ArrowRight } from "lucide-react"
+import { Heart, Zap, Target, ArrowRight } from "lucide-react"
 
 export default function Component() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Users className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-900">FriendFinder</h1>
-          </div>
-          <Button onClick={() => window.location.href = "auth"} className="text-sm px-4 py-2 bg-indigo-600 text-white rounded-lg">
-            Login
-          </Button>
-        </div>
-      </header>
 
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-12">

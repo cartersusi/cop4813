@@ -8,6 +8,9 @@ import Auth from './pages/Auth.tsx'
 //import Contact from './pages/Contact.tsx'
 import Quiz from './pages/Quiz.tsx'
 import Admin from './pages/Admin.tsx'
+import UserProfile from './pages/Profile.tsx'
+import Discover from './pages/Discover.tsx'
+import { Header } from './components/Header.tsx'
 
 //import User from './pages/User.tsx'
 //import Match from './pages/Match.tsx'
@@ -15,11 +18,14 @@ import Admin from './pages/Admin.tsx'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <Header />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/quiz" element={<Quiz />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/user/:userId" element={<UserProfile />} />
+        <Route path="/discover" element={<Discover />} />
         {/* Uncomment these when you create the components:
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
