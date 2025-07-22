@@ -26,7 +26,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/admin" element={<Admin />} />
         <Route path="/user/:userId" element={<UserProfile />} />
         <Route path="/discover" element={<Discover />} />
-        {/* Uncomment these when you create the components:
+        {/*
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/user/:userid" element={<User />} />

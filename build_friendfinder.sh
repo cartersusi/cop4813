@@ -79,7 +79,7 @@ install_homebrew() {
             success "Homebrew is already installed."
         fi
     else
-        warning "This script is designed for macOS ARM64 architecture only. Homebrew installation skipped."
+        warning "This script is designed for macOS ARM64. Homebrew installation skipped."
         warning "Using linux package managers for dependencies."
     fi
 }
@@ -109,6 +109,12 @@ install_deps() {
                 sudo apk add nodejs npm docker
             else
                 error "Unsupported package manager. Please install Node.js and npm manually."
+            fi
+        elif [[ "$platform" == "MINGW64_NT-10.0" || "$platform" == "MINGW32_NT-10.0" ]]; then
+            if command -v choco &> /dev/null; then
+                choco install nodejs npm docker-desktop -y
+            else
+                error "Chocolatey is not installed. Please install Node.js, npm, and docker manually."
             fi
         else
             error "Unsupported platform: $platform. Please install Node.js and npm manually."
@@ -160,10 +166,6 @@ build_docker_image() {
 
 main() {
     info_bold "Setting up Friend Finder..."
-
-    if [[ "$platform" != "Darwin arm64" ]]; then
-        error "This script is designed for macOS ARM64 architecture only."
-    fi
 
     install_homebrew
     install_deps
