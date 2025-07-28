@@ -1,3 +1,5 @@
+// components/Header.tsx - Updated version with friend request notifications
+
 "use client"
 
 import { useState } from "react"
@@ -11,9 +13,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
+import { Avatar, AvatarFallback } from "./ui/avatar"
 import { useAuth } from "../hooks/use-auth"
 import { useToast } from "../hooks/use-toast"
+import { FriendRequestNotification } from "./FriendRequests"
 
 const navigation = [
   { name: "Home", href: "/", icon: Home },
@@ -54,6 +57,19 @@ export function Header() {
     return "Me"
   }
 
+  const getUserDisplayName = (user: any) => {
+    if (user?.first_name && user?.last_name) {
+      return `${user.first_name} ${user.last_name}`
+    }
+    if (user?.first_name) {
+      return user.first_name
+    }
+    if (user?.username) {
+      return user.username
+    }
+    return "User"
+  }
+
   return (
     <header className="bg-white shadow-sm border-b">
       <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" aria-label="Top">
@@ -90,43 +106,49 @@ export function Header() {
             {loading ? (
               <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
             ) : user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage/>
-                      <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                      </p>
-                      <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <a href={`/user/${user.id}`} className="flex items-center">
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Profile</span>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a href="/settings" className="flex items-center">
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <>
+                {/* Friend Request Notifications - NEW */}
+                <FriendRequestNotification user={user} />
+                
+                {/* User Dropdown Menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {getUserDisplayName(user)}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <a href={`/user/${user.id}`} className="flex items-center">
+                        <User className="mr-2 h-4 w-4" />
+                        <span>Profile</span>
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <a href="/settings" className="flex items-center">
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Settings</span>
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             ) : (
               <div className="hidden md:flex md:items-center md:space-x-2">
                 <Button variant="ghost" asChild>
@@ -192,11 +214,11 @@ export function Header() {
                 <div className="border-t border-gray-200 pt-4">
                   <div className="flex items-center px-3 py-2">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage/>
                       <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
                     </Avatar>
                     <div className="ml-3">
                       <div className="text-base font-medium text-gray-800">
+                        {getUserDisplayName(user)}
                       </div>
                       <div className="text-sm font-medium text-gray-500">{user.email}</div>
                     </div>

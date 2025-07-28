@@ -41,7 +41,9 @@ python3 server.py
 ## Architecture
 
 ### 1. Docker
-The entire server, database, and service manager are all containerized within a docker container. Since we are currently self-hosting via Cloudflare tunnel, we wanted the ability to quickly pivit to a cloud service if needed. Docker also provides an easily reproducible environment for testing production builds.
+The entire server, database, and service manager are all containerized within a docker container.\
+Since we are currently self-hosting via Cloudflare tunnel, we wanted the ability to quickly pivit to a cloud service if needed.\
+Docker also provides an easily reproducible environment for testing production builds.
 
 - **Image**: `Ubuntu 22.04 LTS`
 

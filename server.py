@@ -1,14 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.websockets import WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import json
+from datetime import datetime
 
 from server.auth.auth import auth_router
 from server.admin.admin_routes import admin_router
-from server.user.user_routes import user_router, friends_router
+from server.user.user_routes import user_router, friends_router, ConnectionManager, get_current_user, FriendRequest
 from server.knn.quiz_routes import quiz_router
 from server.knn.discover import discover_router
+from server.db.db import DatabaseManager
 
 
 # Create FastAPI instance
@@ -42,6 +46,82 @@ async def root():
         return FileResponse(index_path)
     else:
         raise HTTPException(status_code=404, detail="React app not found")
+    
+manager = ConnectionManager()
+
+@app.websocket("/ws/notifications/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
+
+# Function to notify user of new friend request (call this when a friend request is created)
+async def notify_friend_request(friend_user_id: int, requester_name: str):
+    message = json.dumps({
+        "type": "friend_request",
+        "message": f"{requester_name} sent you a friend request",
+        "timestamp": datetime.now().isoformat()
+    })
+    await manager.send_personal_message(message, friend_user_id)
+
+# Update your existing send friend request endpoint to include notification
+@friends_router.post("/request")
+async def send_friend_request(
+    request: FriendRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Send a friend request with real-time notification"""
+    try:
+        db = DatabaseManager()
+        
+        # Validate friend user exists
+        cursor = db.execute_query("SELECT id, first_name, last_name, username FROM users WHERE id = %s", (request.friend_user_id,))
+        friend_user = cursor.fetchone()
+        if not friend_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if already friends or request exists
+        cursor = db.execute_query("""
+            SELECT status FROM friends 
+            WHERE (user_id = %s AND friend_user_id = %s) 
+            OR (user_id = %s AND friend_user_id = %s)
+        """, (current_user['user_id'], request.friend_user_id, request.friend_user_id, current_user['user_id']))
+        
+        existing = cursor.fetchone()
+        if existing:
+            if existing['status'] == 'accepted':
+                raise HTTPException(status_code=400, detail="Already friends")
+            elif existing['status'] == 'pending':
+                raise HTTPException(status_code=400, detail="Friend request already sent")
+            elif existing['status'] == 'blocked':
+                raise HTTPException(status_code=400, detail="Cannot send friend request")
+        
+        # Create friend request
+        db.execute_query("""
+            INSERT INTO friends (user_id, friend_user_id, status, requested_by, created_at, updated_at)
+            VALUES (%s, %s, 'pending', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, (current_user['user_id'], request.friend_user_id, current_user['user_id']))
+        
+        # Send real-time notification
+        requester_name = f"{current_user.get('first_name', '')} {current_user.get('last_name', '')}".strip()
+        if not requester_name:
+            requester_name = current_user.get('username', 'Someone')
+        
+        await notify_friend_request(request.friend_user_id, requester_name)
+        
+        return {"success": True, "message": "Friend request sent"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send friend request: {str(e)}")
+    finally:
+        if 'db' in locals():
+            db.disconnect()
 
 @app.get("/api/health")
 async def health_check():

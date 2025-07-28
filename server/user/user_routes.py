@@ -13,6 +13,36 @@ user_router = APIRouter(prefix="/api/users", tags=["users"])
 friends_router = APIRouter(prefix="/api/friends", tags=["friends"])
 security = HTTPBearer()
 
+# WebSocket endpoint for real-time notifications (optional advanced feature)
+from fastapi import WebSocket, WebSocketDisconnect
+from typing import Dict, List
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[int, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: int):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, user_id: int):
+        if user_id in self.active_connections:
+            self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+
+    async def send_personal_message(self, message: str, user_id: int):
+        if user_id in self.active_connections:
+            for connection in self.active_connections[user_id]:
+                try:
+                    await connection.send_text(message)
+                except:
+                    # Remove dead connections
+                    self.active_connections[user_id].remove(connection)
+
+
 # Pydantic models
 class UserProfile(BaseModel):
     id: int
@@ -210,37 +240,195 @@ async def get_user_posts(
         if 'db' in locals():
             db.disconnect()
 
-@friends_router.get("/status/{user_id}", response_model=FriendStatus)
-async def get_friend_status(
-    user_id: int,
+# Fixed backend endpoints for your friends table schema
+# Add these routes to your existing user_routes.py or friends_router
+
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List, Dict, Any
+import json
+
+# Fixed route for getting pending friend requests
+@friends_router.get("/requests/pending")
+async def get_pending_friend_requests(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get friendship status with a user"""
+    """Get all pending friend requests for the current user"""
     try:
         db = DatabaseManager()
         
+        # Get pending friend requests where current user is the recipient
+        # Note: Since friends table doesn't have an 'id' column, we'll use user_id + friend_user_id as identifier
         cursor = db.execute_query("""
-            SELECT status, requested_by FROM friends 
-            WHERE (user_id = %s AND friend_user_id = %s) 
-               OR (user_id = %s AND friend_user_id = %s)
-        """, (current_user['user_id'], user_id, user_id, current_user['user_id']))
+            SELECT 
+                f.user_id,
+                f.friend_user_id,
+                f.status,
+                f.requested_by,
+                f.created_at,
+                f.updated_at,
+                u.id as requester_id,
+                u.username as requester_username,
+                u.first_name as requester_first_name,
+                u.last_name as requester_last_name,
+                u.avatar_url as requester_avatar_url
+            FROM friends f
+            JOIN users u ON f.requested_by = u.id
+            WHERE f.friend_user_id = %s 
+            AND f.status = 'pending'
+            ORDER BY f.created_at DESC
+        """, (current_user['user_id'],))
         
-        friendship = cursor.fetchone()
+        requests = cursor.fetchall()
         
-        if not friendship:
-            return FriendStatus(status="none")
+        # Format the response
+        formatted_requests = []
+        for request in requests:
+            # Create a unique identifier using user_id and friend_user_id
+            request_id = f"{request['user_id']}_{request['friend_user_id']}"
+            
+            formatted_requests.append({
+                "id": request_id,  # Composite ID for frontend identification
+                "user_id": request['user_id'],
+                "friend_user_id": request['friend_user_id'],
+                "status": request['status'],
+                "requested_by": request['requested_by'],
+                "created_at": request['created_at'].isoformat() if request['created_at'] else None,
+                "updated_at": request['updated_at'].isoformat() if request['updated_at'] else None,
+                "requester": {
+                    "id": request['requester_id'],
+                    "username": request['requester_username'],
+                    "first_name": request['requester_first_name'],
+                    "last_name": request['requester_last_name'],
+                    "avatar_url": request['requester_avatar_url']
+                }
+            })
         
-        return FriendStatus(
-            status=friendship['status'],
-            requested_by=friendship['requested_by']
-        )
+        return {
+            "success": True,
+            "requests": formatted_requests,
+            "count": len(formatted_requests)
+        }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get friend status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch friend requests: {str(e)}")
     finally:
         if 'db' in locals():
             db.disconnect()
 
+@friends_router.delete("/decline/{user_id}")
+async def decline_friend_request(
+    user_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Decline a friend request"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if there's a pending request
+        cursor = db.execute_query("""
+            SELECT user_id, friend_user_id FROM friends 
+            WHERE user_id = %s AND friend_user_id = %s AND status = 'pending'
+        """, (user_id, current_user['user_id']))
+        
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="No pending friend request found")
+        
+        # Delete the friend request (decline)
+        db.execute_query("""
+            DELETE FROM friends 
+            WHERE user_id = %s AND friend_user_id = %s AND status = 'pending'
+        """, (user_id, current_user['user_id']))
+        
+        return {"success": True, "message": "Friend request declined"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to decline friend request: {str(e)}")
+    finally:
+        if 'db' in locals():
+            db.disconnect()
+
+# Fixed route for getting friend request count
+@friends_router.get("/requests/count")
+async def get_friend_request_count(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get count of pending friend requests for the current user"""
+    try:
+        db = DatabaseManager()
+        
+        cursor = db.execute_query("""
+            SELECT COUNT(*) as count
+            FROM friends 
+            WHERE friend_user_id = %s AND status = 'pending'
+        """, (current_user['user_id'],))
+        
+        result = cursor.fetchone()
+        count = result['count'] if result else 0
+        
+        return {
+            "success": True,
+            "count": count
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get friend request count: {str(e)}")
+    finally:
+        if 'db' in locals():
+            db.disconnect()
+
+# Enhanced version of the existing accept endpoint
+@friends_router.post("/accept/{user_id}")
+async def accept_friend_request(
+    user_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Accept a friend request"""
+    try:
+        db = DatabaseManager()
+        
+        # Check if there's a pending request and get requester info
+        cursor = db.execute_query("""
+            SELECT f.user_id, f.friend_user_id, u.first_name, u.last_name, u.username 
+            FROM friends f
+            JOIN users u ON f.requested_by = u.id
+            WHERE f.user_id = %s AND f.friend_user_id = %s AND f.status = 'pending'
+        """, (user_id, current_user['user_id']))
+        
+        request_data = cursor.fetchone()
+        if not request_data:
+            raise HTTPException(status_code=404, detail="No pending friend request found")
+        
+        # Update status to accepted
+        db.execute_query("""
+            UPDATE friends 
+            SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = %s AND friend_user_id = %s
+        """, (user_id, current_user['user_id']))
+        
+        # Get requester name for response
+        requester_name = f"{request_data['first_name'] or ''} {request_data['last_name'] or ''}".strip()
+        if not requester_name:
+            requester_name = request_data['username']
+        
+        return {
+            "success": True, 
+            "message": "Friend request accepted",
+            "requester_name": requester_name
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to accept friend request: {str(e)}")
+    finally:
+        if 'db' in locals():
+            db.disconnect()
+
+# Updated send friend request endpoint to work with your schema
 @friends_router.post("/request")
 async def send_friend_request(
     request: FriendRequest,
@@ -250,16 +438,17 @@ async def send_friend_request(
     try:
         db = DatabaseManager()
         
-        # Check if user exists
-        cursor = db.execute_query("SELECT id FROM users WHERE id = %s AND is_deleted = FALSE", (request.friend_user_id,))
-        if not cursor.fetchone():
+        # Validate friend user exists
+        cursor = db.execute_query("SELECT id, first_name, last_name, username FROM users WHERE id = %s", (request.friend_user_id,))
+        friend_user = cursor.fetchone()
+        if not friend_user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Check if friendship already exists
+        # Check if already friends or request exists
         cursor = db.execute_query("""
             SELECT status FROM friends 
             WHERE (user_id = %s AND friend_user_id = %s) 
-               OR (user_id = %s AND friend_user_id = %s)
+            OR (user_id = %s AND friend_user_id = %s)
         """, (current_user['user_id'], request.friend_user_id, request.friend_user_id, current_user['user_id']))
         
         existing = cursor.fetchone()
@@ -287,105 +476,11 @@ async def send_friend_request(
         if 'db' in locals():
             db.disconnect()
 
-@friends_router.post("/accept/{user_id}")
-async def accept_friend_request(
-    user_id: int,
-    current_user: dict = Depends(get_current_user)
-):
-    """Accept a friend request"""
+# Helper function to parse composite request ID (for frontend compatibility)
+def parse_request_id(request_id: str) -> tuple:
+    """Parse composite request ID back to user_id and friend_user_id"""
     try:
-        db = DatabaseManager()
-        
-        # Check if there's a pending request
-        cursor = db.execute_query("""
-            SELECT id FROM friends 
-            WHERE user_id = %s AND friend_user_id = %s AND status = 'pending'
-        """, (user_id, current_user['user_id']))
-        
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="No pending friend request found")
-        
-        # Update status to accepted
-        db.execute_query("""
-            UPDATE friends 
-            SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = %s AND friend_user_id = %s
-        """, (user_id, current_user['user_id']))
-        
-        return {"success": True, "message": "Friend request accepted"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to accept friend request: {str(e)}")
-    finally:
-        if 'db' in locals():
-            db.disconnect()
-
-@friends_router.delete("/remove/{user_id}")
-async def remove_friend(
-    user_id: int,
-    current_user: dict = Depends(get_current_user)
-):
-    """Remove a friend or cancel friend request"""
-    try:
-        db = DatabaseManager()
-        
-        # Remove friendship (works for both directions)
-        db.execute_query("""
-            DELETE FROM friends 
-            WHERE (user_id = %s AND friend_user_id = %s) 
-               OR (user_id = %s AND friend_user_id = %s)
-        """, (current_user['user_id'], user_id, user_id, current_user['user_id']))
-        
-        return {"success": True, "message": "Friend removed"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to remove friend: {str(e)}")
-    finally:
-        if 'db' in locals():
-            db.disconnect()
-
-@friends_router.get("/list")
-async def get_friends_list(
-    current_user: dict = Depends(get_current_user),
-    limit: int = Query(50, ge=1, le=100)
-):
-    """Get user's friends list"""
-    try:
-        db = DatabaseManager()
-        
-        cursor = db.execute_query("""
-            SELECT u.id, u.username, u.first_name, u.last_name, u.avatar_url, f.created_at as friend_since
-            FROM friends f
-            JOIN users u ON (
-                CASE 
-                    WHEN f.user_id = %s THEN u.id = f.friend_user_id
-                    ELSE u.id = f.user_id
-                END
-            )
-            WHERE (f.user_id = %s OR f.friend_user_id = %s) 
-              AND f.status = 'accepted'
-              AND u.is_deleted = FALSE
-            ORDER BY f.created_at DESC
-            LIMIT %s
-        """, (current_user['user_id'], current_user['user_id'], current_user['user_id'], limit))
-        
-        friends = cursor.fetchall()
-        
-        return [
-            {
-                "id": friend['id'],
-                "username": friend['username'],
-                "first_name": friend['first_name'],
-                "last_name": friend['last_name'],
-                "avatar_url": friend['avatar_url'],
-                "friend_since": friend['friend_since']
-            } for friend in friends
-        ]
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get friends list: {str(e)}")
-    finally:
-        if 'db' in locals():
-            db.disconnect()
+        user_id, friend_user_id = request_id.split('_')
+        return int(user_id), int(friend_user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid request ID format")

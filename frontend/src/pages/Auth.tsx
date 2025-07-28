@@ -135,6 +135,7 @@ export default function Auth({ personalityScores, onAuthSuccess }: AuthPageProps
         // Navigate with a small delay to show the success message
         setTimeout(() => {
           navigate(from, { replace: true })
+          window.location.reload()
         }, personalityScores ? 2000 : 500)
       }
     } catch (err) {
